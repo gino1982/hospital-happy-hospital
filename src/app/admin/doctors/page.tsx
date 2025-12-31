@@ -30,6 +30,7 @@ export default function DoctorsPage() {
     const [departments, setDepartments] = useState<Department[]>([]);
     const [searchTerm, setSearchTerm] = useState("");
     const [isAddOpen, setIsAddOpen] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const load = async () => {
         const [deptRes, docRes] = await Promise.all([
@@ -73,11 +74,43 @@ export default function DoctorsPage() {
     });
     const [specialtiesInput, setSpecialtiesInput] = useState("");
 
-    const handleAddDoctor = () => {
-        if (!formData.name || !formData.department) return; // Simple validation
+    const [photoFile, setPhotoFile] = useState<File | null>(null);
+    const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
+    const [photoError, setPhotoError] = useState<string | null>(null);
 
-        const run = async () => {
-            await fetch("/api/admin/doctors", {
+    const uploadDoctorPhoto = async (file: File) => {
+        const fd = new FormData();
+        fd.append("file", file);
+
+        const res = await fetch("/api/admin/uploads/doctor-photo", {
+            method: "POST",
+            body: fd,
+        });
+
+        if (!res.ok) {
+            const err = await res.json().catch(() => null);
+            throw new Error(err?.error || "UPLOAD_FAILED");
+        }
+
+        const data = (await res.json()) as { url?: string };
+        if (!data.url) throw new Error("UPLOAD_NO_URL");
+        return data.url;
+    };
+
+    const handleAddDoctor = async () => {
+        if (!formData.name || !formData.department) return;
+        if (isSubmitting) return;
+
+        setIsSubmitting(true);
+        setPhotoError(null);
+
+        try {
+            let imageUrl = formData.imageUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${formData.name}`;
+            if (photoFile) {
+                imageUrl = await uploadDoctorPhoto(photoFile);
+            }
+
+            const res = await fetch("/api/admin/doctors", {
                 method: "POST",
                 headers: { "content-type": "application/json" },
                 body: JSON.stringify({
@@ -85,18 +118,33 @@ export default function DoctorsPage() {
                     title: formData.title || "主治醫師",
                     departmentId: formData.department,
                     introduction: formData.introduction || "",
-                    specialties: specialtiesInput.split(",").map(s => s.trim()).filter(s => s !== ""),
-                    imageUrl: formData.imageUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${formData.name}`,
+                    specialties: specialtiesInput
+                        .split(",")
+                        .map((s) => s.trim())
+                        .filter((s) => s !== ""),
+                    imageUrl,
                     isAvailable: true,
                 }),
             });
+
+            if (!res.ok) {
+                const err = await res.json().catch(() => null);
+                throw new Error(err?.error || "CREATE_DOCTOR_FAILED");
+            }
+
             setIsAddOpen(false);
             setFormData({ name: "", title: "", department: "", introduction: "", imageUrl: "" });
             setSpecialtiesInput("");
+            setPhotoFile(null);
+            if (photoPreviewUrl) URL.revokeObjectURL(photoPreviewUrl);
+            setPhotoPreviewUrl(null);
             await load();
-        };
-
-        void run();
+        } catch (e) {
+            const msg = e instanceof Error ? e.message : "UNKNOWN_ERROR";
+            setPhotoError(msg);
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     const filteredDoctors = doctors.filter(doc =>
@@ -183,9 +231,58 @@ export default function DoctorsPage() {
                                     placeholder="醫師簡介..."
                                 />
                             </div>
+
+                            <div className="grid grid-cols-4 items-start gap-4">
+                                <Label htmlFor="photo" className="text-right mt-2">照片</Label>
+                                <div className="col-span-3 space-y-2">
+                                    <Input
+                                        id="photo"
+                                        type="file"
+                                        accept="image/png,image/jpeg,image/webp"
+                                        onChange={(e) => {
+                                            const file = e.target.files?.[0] || null;
+                                            setPhotoError(null);
+
+                                            if (photoPreviewUrl) URL.revokeObjectURL(photoPreviewUrl);
+
+                                            if (!file) {
+                                                setPhotoFile(null);
+                                                setPhotoPreviewUrl(null);
+                                                return;
+                                            }
+                                            const maxBytes = 2 * 1024 * 1024;
+                                            if (file.size > maxBytes) {
+                                                setPhotoError("檔案太大（上限 2MB）");
+                                                setPhotoFile(null);
+                                                setPhotoPreviewUrl(null);
+                                                return;
+                                            }
+
+                                            setPhotoFile(file);
+                                            setPhotoPreviewUrl(URL.createObjectURL(file));
+                                        }}
+                                    />
+
+                                    {(photoPreviewUrl || formData.imageUrl) && (
+                                        <div className="w-28 h-28 rounded-xl overflow-hidden bg-slate-100 border">
+                                            <img
+                                                src={photoPreviewUrl || formData.imageUrl}
+                                                alt="doctor preview"
+                                                className="w-full h-full object-cover"
+                                            />
+                                        </div>
+                                    )}
+
+                                    {photoError && (
+                                        <p className="text-sm text-red-600">{photoError}</p>
+                                    )}
+                                </div>
+                            </div>
                         </div>
                         <DialogFooter>
-                            <Button type="submit" onClick={handleAddDoctor}>儲存醫師</Button>
+                            <Button type="submit" onClick={() => void handleAddDoctor()} disabled={isSubmitting}>
+                                {isSubmitting ? "儲存中..." : "儲存醫師"}
+                            </Button>
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>

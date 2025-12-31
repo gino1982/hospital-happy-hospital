@@ -1,27 +1,47 @@
 import type { NextConfig } from "next";
 import path from "path";
 
+function getSupabaseHostname() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+  if (!url) return null;
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return null;
+  }
+}
+
+const remotePatterns = [
+  {
+    protocol: 'https',
+    hostname: 'images.unsplash.com',
+  },
+  {
+    protocol: 'https',
+    hostname: 'api.dicebear.com',
+  },
+  {
+    protocol: 'https',
+    hostname: 'placehold.co',
+  },
+  {
+    protocol: 'https',
+    hostname: 'randomuser.me',
+  },
+] as any[];
+
+const supabaseHostname = getSupabaseHostname();
+if (supabaseHostname) {
+  remotePatterns.push({
+    protocol: 'https',
+    hostname: supabaseHostname,
+  });
+}
+
 const nextConfig: NextConfig = {
   outputFileTracingRoot: path.join(__dirname),
   images: {
-    remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: 'images.unsplash.com',
-      },
-      {
-        protocol: 'https',
-        hostname: 'api.dicebear.com',
-      },
-      {
-        protocol: 'https',
-        hostname: 'placehold.co',
-      },
-      {
-        protocol: 'https',
-        hostname: 'randomuser.me',
-      },
-    ],
+    remotePatterns,
     // 圖片優化設定
     formats: ['image/avif', 'image/webp'],
     deviceSizes: [640, 750, 828, 1080, 1200, 1920],
