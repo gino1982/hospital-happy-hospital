@@ -1,0 +1,96 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum TimeSlot {
+  Morning
+  Afternoon
+  Evening
+}
+
+enum AppointmentStatus {
+  Pending
+  Confirmed
+  Cancelled
+}
+
+model AdminUser {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+}
+
+model Department {
+  id          String   @id
+  name        String
+  description String
+  icon        String
+  doctors     Doctor[]
+}
+
+model Doctor {
+  id           String     @id
+  name         String
+  title        String
+  introduction String
+  imageUrl     String
+  isAvailable  Boolean    @default(true)
+  specialties  Json
+
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+
+  schedules Schedule[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Schedule {
+  id          String   @id
+  doctorId    String
+  doctor      Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  date        DateTime
+  timeSlot    TimeSlot
+  startTime   String
+  endTime     String
+  maxPatients Int
+  isAvailable Boolean  @default(true)
+
+  appointments Appointment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([doctorId, date])
+}
+
+model Appointment {
+  id              String            @id @default(cuid())
+  scheduleId      String
+  schedule        Schedule          @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+
+  patientName     String
+  patientIdNumber String
+  birthDate       String
+  phone           String
+  email           String?
+
+  queueNumber     Int
+  status          AppointmentStatus @default(Confirmed)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([scheduleId, queueNumber])
+  @@unique([scheduleId, patientIdNumber])
+  @@index([patientIdNumber, phone])
+}
